@@ -151,7 +151,7 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       # Download the JAR file artifact from the build job
-      - name: Download JAR file artifact
+      - name: Download JAR file artifacts
         uses: actions/download-artifact@v4
         with:
           name: utc-jar
