@@ -16,9 +16,10 @@ env:
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
   ECR_ROLE: ${{ secrets.ECR_ACESS_ROLE }}
   AWS_REGION: ${{ secrets.AWS_REGION }}
-  VAULT_URL: ${{ secrets.VAULT_URL }}  
-  VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}   
+  VAULT_URL: ${{ secrets.VAULT_URL }}
+  VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
   JFROG_REPO_NAME: utc-app
+
 jobs:
 
   sonar:
@@ -44,35 +45,28 @@ jobs:
 
       - name: Build with Maven
         run: mvn -B clean verify
-      
-      - name: Cache SonarQube package
-        uses: actions/cache@v4
-        with:
-          path: ~/.sonar/cache
-          key: ${{ runner.os }}-sonar
-          restore-keys: ${{ runner.os }}-sonar
-
-      - name: Cache Maven packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
 
       - name: SonarQube Scan
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
-        #run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=geo_app -Dsonar.qualitygate.wait=true
-        run:  mvn verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=utc_app -Dsonar.projectName=utc_app
+        run: mvn verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+              -Dsonar.projectKey=utc_app \
+              -Dsonar.projectName=utc_app
+
+      - name: Debug scannerwork path
+        run: find . -name "report-task.txt"
+
       - name: SonarQube Quality Gate
         uses: SonarSource/sonarqube-quality-gate-action@v1
+        with:
+          scanMetadataReportFile: target/sonar/.scannerwork/report-task.txt
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}  
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
-      
+
   build:
     runs-on: ubuntu-latest
     needs: sonar
@@ -95,46 +89,44 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: utc-jar
-          path: target/*.jar  
+          path: target/*.jar
+
 
   deploy_jfrog:
-   runs-on: ubuntu-latest
-   needs: build
-   steps:
-     - name: Checkout Code
-       uses: actions/checkout@v4
-       with:
-         fetch-depth: 0
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-     - name: Download JAR file artifact
-       uses: actions/download-artifact@v4
-       with:
-         name: utc-jar
-         path: target/
+      - name: Download JAR file artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: utc-jar
+          path: target/
 
-     # Load secrets from Vault and set as env variables for rest of job
-     - name: Read secrets from Vault
-       uses: hashicorp/vault-action@v2
-       with:
-         url: ${{ secrets.VAULT_URL }}
-         method: token
-         token: ${{ secrets.VAULT_TOKEN }}
-         exportEnv: true
-         secrets: |
-          secrets/creds/jfrog username | MAVEN_USERNAME_A ;
-          secrets/creds/jfrog password | MAVEN_PASSWORD_A
+      # Load secrets from Vault
+      - name: Read secrets from Vault
+        uses: hashicorp/vault-action@v2
+        with:
+          url: ${{ secrets.VAULT_URL }}
+          method: token
+          token: ${{ secrets.VAULT_TOKEN }}
+          exportEnv: true
+          secrets: |
+            secrets/creds/jfrog username | MAVEN_USERNAME_A ;
+            secrets/creds/jfrog password | MAVEN_PASSWORD_A
 
-     - name: Deploy to JFrog
-       env:
-         MAVEN_USERNAME_A: ${{ env.MAVEN_USERNAME_A }}
-         MAVEN_PASSWORD_A: ${{ env.MAVEN_PASSWORD_A }}
-       run: |
-        APP_VERSION=$(grep -m2 '<version>' pom.xml | tail -1 | grep -oP '(?<=>).*(?=<)')
-        APP_NAME=$(grep -m2 '<artifactId>' pom.xml | tail -1 | grep -oP '(?<=>).*(?=<)')
-        APP_LONG_NAME=$APP_NAME-$APP_VERSION.jar
-        echo "Deploying $APP_LONG_NAME to Artifactory..."
-        curl -v --user $MAVEN_USERNAME_A:$MAVEN_PASSWORD_A \
-          -T target/$APP_LONG_NAME \
-          -X PUT "$ARTIFACTORY_URL/artifactory/$JFROG_REPO_NAME/$APP_LONG_NAME"
-          
-          
+      - name: Deploy to JFrog
+        env:
+          MAVEN_USERNAME_A: ${{ env.MAVEN_USERNAME_A }}
+          MAVEN_PASSWORD_A: ${{ env.MAVEN_PASSWORD_A }}
+        run: |
+          APP_VERSION=$(grep -m2 '<version>' pom.xml | tail -1 | grep -oP '(?<=>).*(?=<)')
+          APP_NAME=$(grep -m2 '<artifactId>' pom.xml | tail -1 | grep -oP '(?<=>).*(?=<)')
+          APP_LONG_NAME=$APP_NAME-$APP_VERSION.jar
+          echo "Deploying $APP_LONG_NAME to Artifactory..."
+          curl -v --user $MAVEN_USERNAME_A:$MAVEN_PASSWORD_A \
+            -T target/$APP
