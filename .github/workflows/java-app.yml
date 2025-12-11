@@ -147,7 +147,7 @@ jobs:
       - name: Configure AWS Credential
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ACESS_ROLE }}
+          role-to-assume: ${{ secrets.ECR_ACESS_ROLE }}
           aws-region: ${{ secrets.AWS_REGION }}
 
       # Download the JAR file artifact from the build job
